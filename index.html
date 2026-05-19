@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Tool Board</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Stack+Sans+Notch:wght@200..700&family=Poppins:wght@500;600&display=swap" rel="stylesheet">
+
+<style>
+body{
+  margin:0;
+  font-family:"Stack Sans Notch",system-ui;
+  background:#0A0A0A;
+  color:#fff;
+}
+.header{padding:30px;}
+h1{color:#8b5cf6;font-size:32px;}
+
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
+  justify-content:center;
+  gap:24px;
+  padding:30px;
+}
+
+.card{
+  background:linear-gradient(145deg,#111,#131313);
+  border-radius:16px;
+  padding:20px;
+  box-shadow:0 0 25px rgba(139,92,246,.15);
+  cursor:pointer;
+  transition:.25s;
+  width:280px;
+  border:1px solid #2a2a2a;
+  position:relative;
+}
+
+.card:hover{
+  transform:translateY(-5px);
+  box-shadow:0 0 40px rgba(139,92,246,.4);
+}
+
+.index{
+  position:absolute;
+  top:12px;
+  right:15px;
+  color:#8b5cf6;
+  font-weight:bold;
+  font-size:14px;
+}
+
+.iconBox{
+  width:48px;
+  height:48px;
+  background:#2B2140;
+  border-radius:12px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin-bottom:15px;
+}
+
+.iconBox img{
+  width:26px;
+  height:26px;
+  filter:brightness(0) saturate(100%) invert(41%) sepia(71%) saturate(660%) hue-rotate(230deg);
+}
+
+.title{font-size:20px;margin-bottom:8px;}
+.about{color:#aaa;font-size:14px;}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+  <h1>Tool Board</h1>
+  <p>Welcome to your Web Tools control center</p>
+</div>
+
+<div class="grid" id="tools">Loading tools...</div>
+
+<script>
+const defaultIcon = `
+<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="none" viewBox="0 0 24 24">
+  <path stroke="#7A51D5" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+    d="M10 3v4a1 1 0 0 1-1 1H5m4 10v-2m3 2v-6m3 6v-3m4-11v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7.914a1 1 0 0 1 .293-.707l3.914-3.914A1 1 0 0 1 9.914 3H18a1 1 0 0 1 1 1Z"/>
+</svg>`;
+
+const host = location.hostname;
+const user = host.replace(".github.io", "");
+const repoMatch = window.location.pathname.match(/^\/([^/]+)/);
+const repo = repoMatch ? repoMatch[1] : "";
+
+let branch = "main", baseAPI = "";
+
+async function detectBranch() {
+  for (const b of ["main", "master"]) {
+    const r = await fetch(`https://api.github.com/repos/${user}/${repo}/contents/tools?ref=${b}`);
+    if (r.ok) {
+      branch = b;
+      baseAPI = `https://api.github.com/repos/${user}/${repo}/contents/tools?ref=${b}`;
+      return true;
+    }
+  }
+  return false;
+}
+
+async function fetchToolData(folderName, index) {
+  const descURL = `https://raw.githubusercontent.com/${user}/${repo}/${branch}/tools/${folderName}/description.json`;
+  const iconURL = `https://raw.githubusercontent.com/${user}/${repo}/${branch}/tools/${folderName}/icon.svg`;
+
+  try {
+    // Fetch description and check icon existence simultaneously
+    const [descRes, iconRes] = await Promise.all([
+      fetch(descURL).then(res => res.json()),
+      fetch(iconURL, { method: "HEAD" })
+    ]);
+
+    const iconHtml = iconRes.ok ? `<img src="${iconURL}">` : defaultIcon;
+
+    return `
+      <div class="card" onclick="openTool('${folderName}')">
+        <div class="index">#${index}</div>
+        <div class="iconBox">${iconHtml}</div>
+        <div class="title">${descRes.title || folderName}</div>
+        <div class="about">${descRes.about || "No description available."}</div>
+      </div>
+    `;
+  } catch (error) {
+    console.error(`Error loading tool ${folderName}:`, error);
+    return ""; // Return empty string so the grid doesn't break
+  }
+}
+
+async function loadDashboard() {
+  const ok = await detectBranch();
+  if (!ok) {
+    document.getElementById("tools").innerHTML = "❌ tools folder not found";
+    return;
+  }
+
+  try {
+    const res = await fetch(baseAPI);
+    const contents = await res.json();
+    const toolFolders = contents.filter(f => f.type === "dir");
+
+    // Create an array of promises for each tool
+    const toolPromises = toolFolders.map((folder, i) => fetchToolData(folder.name, i + 1));
+
+    // Wait for all tools to resolve their data
+    const toolCards = await Promise.all(toolPromises);
+
+    // Join and inject everything at once to maintain alphabetical order
+    document.getElementById("tools").innerHTML = toolCards.join("");
+  } catch (err) {
+    document.getElementById("tools").innerHTML = "❌ Error fetching directory data";
+  }
+}
+
+function openTool(n) {
+  location.href = "tools/" + n + "/";
+}
+
+loadDashboard();
+</script>
+
+</body>
+</html>
